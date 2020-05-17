@@ -84,6 +84,101 @@ class Counter:
             clauses.append(renumCl)
         return clauses, [i for i in range(1, self.dimension + 1)]
 
+    def exportBSS(self):
+        clauses = []
+        xclauses = []
+
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + self.dimension)
+                else: renumCl.append(l - self.dimension)
+            renumCl.append(i)
+            clauses.append(renumCl)
+            i += 1
+
+        #max model
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: 
+                    clauses.append([-i, -(l + self.dimension)])
+                else:
+                    clauses.append([-i, -(l - self.dimension)])
+            i += 1
+
+        for cl in self.B:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + self.dimension)
+                else: renumCl.append(l - self.dimension)
+            clauses.append(renumCl)
+        return clauses, [i for i in range(1, self.dimension + 1)]
+
+
+    def exportBLSS(self):
+        clauses = []
+        xclauses = []
+
+        #S is sat
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + 2*self.dimension)
+                else: renumCl.append(l - 2*self.dimension)
+            renumCl.append(i)
+            clauses.append(renumCl)
+            i += 1
+
+        #E is sat
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + 2*self.dimension)
+                else: renumCl.append(l - 2*self.dimension)
+            renumCl.append(i + self.dimension)
+            clauses.append(renumCl)
+            i += 1
+
+        #max model
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: 
+                    clauses.append([-i, -(l + 2*self.dimension)])
+                else:
+                    clauses.append([-i, -(l - 2*self.dimension)])
+            i += 1
+
+        #the base clauses
+        for cl in self.B:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + 2*self.dimension)
+                else: renumCl.append(l - 2*self.dimension)
+            clauses.append(renumCl)
+
+        #E supseteq S
+        for i in range(1, self.dimension + 1):
+            clauses.append([i, - (i + self.dimension)])
+
+        proper = []
+        mv = maxVar(clauses)
+        act = mv
+        for i in range(1, self.dimension + 1):
+            act += 1
+            proper += [[act, i], [act, -(i + self.dimension)]] 
+        proper.append([-a for a in range(mv + 1, act + 1)])
+
+        clauses += proper
+
+        return clauses, [i for i in range(1, self.dimension + 1)]
+
     def exportLSS(self):
         clauses = []
         xclauses = []
@@ -114,8 +209,8 @@ class Counter:
         for cl in self.B:
             renumCl = []
             for l in cl:
-                if l > 0: renumCl.append(l + self.dimension)
-                else: renumCl.append(l - self.dimension)
+                if l > 0: renumCl.append(l + 2*self.dimension)
+                else: renumCl.append(l - 2*self.dimension)
             clauses.append(renumCl)
 
         #E supseteq S
@@ -144,6 +239,16 @@ class Counter:
         LSSFile = "/var/tmp/LSS.cnf"
         exportCNF(LSSClauses, LSSFile, LSSInd)
         print(LSSFile)
+
+        BSSClauses, BSSInd = self.exportBSS()
+        BSSFile = "/var/tmp/BSS.cnf"
+        exportCNF(BSSClauses, BSSFile, BSSInd)
+        print(BSSFile)
+
+        BLSSClauses, BLSSInd = self.exportBLSS()
+        BLSSFile = "/var/tmp/BLSS.cnf"
+        exportCNF(BLSSClauses, BLSSFile, BLSSInd)
+        print(BLSSFile)
 
 def restricted_float(x):
     try:
