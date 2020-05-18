@@ -62,6 +62,15 @@ class Counter:
         self.t = int(17 * log(3 / d,2));
         self.checks = 0
         self.rid = randint(1,10000000)
+        flatten = []
+        for cl in (self.B + self.C):
+            flatten += cl
+        self.lits = set([l for l in flatten])
+        self.hitmapC = {l:[] for l in self.lits}
+        for i in range(len(self.C)):
+            for l in self.C[i]:
+                assert l in self.lits
+                self.hitmapC[l].append(i + 1) #+1 offset
 
     def exportSS(self):
         clauses = []
@@ -117,6 +126,49 @@ class Counter:
             clauses.append(renumCl)
         return clauses, [i for i in range(1, self.dimension + 1)]
 
+    def exportEBSS(self):
+        clauses = []
+        xclauses = []
+
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + self.dimension)
+                else: renumCl.append(l - self.dimension)
+            renumCl.append(i)
+            clauses.append(renumCl)
+            i += 1
+
+        #max model
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: 
+                    clauses.append([-i, -(l + self.dimension)])
+                else:
+                    clauses.append([-i, -(l - self.dimension)])
+            i += 1
+
+        for cl in self.B:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + self.dimension)
+                else: renumCl.append(l - self.dimension)
+            clauses.append(renumCl)
+
+        for key in self.hitmapC:
+            if len(self.hitmapC[key]) == 0: continue
+            if key > 0:
+                lit = key + self.dimension
+            else:
+                lit = key - self.dimension
+            clauses.append([-lit] + [ -l for l in self.hitmapC[key]])
+
+        return clauses, [i for i in range(1, self.dimension + 1)]
+
+    
 
     def exportBLSS(self):
         clauses = []
@@ -238,6 +290,22 @@ class Counter:
 
         return clauses, [i for i in range(1, self.dimension + 1)]
 
+    def approxMC(self, filename):
+        cmd = "approxmc {}".format(filename)
+        proc = sp.Popen([cmd], stdout=sp.PIPE, shell=True)
+        (out, err) = proc.communicate()
+        out = out.decode("utf-8")
+        for line in out.splitlines():
+            if "Number of solutions is" in line:
+                line = line.split("Number of solutions is:")[1].strip()
+                assert "x" in line
+                line = line.split("x")
+                coeff = int(line[0].strip())
+                base = line[1].strip().split("^")[0]
+                exp = line[1].strip().split("^")[1]
+                return coeff, base, exp
+        assert False
+
     def run(self):
         SSClauses, SSInd = self.exportSS()
         SSFile = "/var/tmp/SS.cnf"
@@ -258,6 +326,16 @@ class Counter:
         BLSSFile = "/var/tmp/BLSS.cnf"
         exportCNF(BLSSClauses, BLSSFile, BLSSInd)
         print(BLSSFile)
+
+        EBSSClauses, EBSSInd = self.exportEBSS()
+        EBSSFile = "/var/tmp/EBSS.cnf"
+        exportCNF(EBSSClauses, EBSSFile, EBSSInd)
+        print(EBSSFile)
+
+        BSScoeff, BSSbase, BSSexp = self.approxMC(BSSFile)
+        BLSScoeff, BLSSbase, BLSSexp = self.approxMC(BLSSFile)
+        print(BSScoeff, BSSbase, BSSexp)
+        print(BLSScoeff, BLSSbase, BLSSexp)
 
 def restricted_float(x):
     try:
