@@ -133,16 +133,13 @@ class Counter:
             clauses.append(renumCl)
             i += 1
 
-        #E is sat
-        i = 1
-        for cl in self.C:
+        #the base clauses
+        for cl in self.B:
             renumCl = []
             for l in cl:
                 if l > 0: renumCl.append(l + 2*self.dimension)
                 else: renumCl.append(l - 2*self.dimension)
-            renumCl.append(i + self.dimension)
             clauses.append(renumCl)
-            i += 1
 
         #max model
         i = 1
@@ -155,12 +152,24 @@ class Counter:
                     clauses.append([-i, -(l - 2*self.dimension)])
             i += 1
 
+        #E is sat
+        i = 1
+        mv = maxVar(clauses)
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + mv)
+                else: renumCl.append(l - mv)
+            renumCl.append(i + self.dimension)
+            clauses.append(renumCl)
+            i += 1
+
         #the base clauses
         for cl in self.B:
             renumCl = []
             for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
+                if l > 0: renumCl.append(l + mv)
+                else: renumCl.append(l - mv)
             clauses.append(renumCl)
 
         #E supseteq S
