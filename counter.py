@@ -52,6 +52,11 @@ def parse(filename):
                     C.append(cl)
     return C,B
 
+def offset(a, off):
+    if a > 0:
+        return a + off
+    return a - off
+
 class Counter:
     def __init__(self, filename, e, d):
         self.filename = filename
@@ -71,6 +76,11 @@ class Counter:
             for l in self.C[i]:
                 assert l in self.lits
                 self.hitmapC[l].append(i + 1) #+1 offset
+        self.hitmapB = {l:[] for l in self.lits}
+        for i in range(len(self.B)):
+            for l in self.B[i]:
+                assert l in self.lits
+                self.hitmapB[l].append(i) #note that here we store 0-based index as opposed to hitmapC
 
     def exportSS(self):
         clauses = []
@@ -118,6 +128,7 @@ class Counter:
                     clauses.append([-i, -(l - self.dimension)])
             i += 1
 
+        #base clauses
         for cl in self.B:
             renumCl = []
             for l in cl:
@@ -168,6 +179,77 @@ class Counter:
 
         return clauses, [i for i in range(1, self.dimension + 1)]
 
+    def exportFEBSS(self):
+        clauses = []
+        xclauses = []
+
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + self.dimension)
+                else: renumCl.append(l - self.dimension)
+            renumCl.append(i)
+            clauses.append(renumCl)
+            i += 1
+
+        #max model
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0: 
+                    clauses.append([-i, -(l + self.dimension)])
+                else:
+                    clauses.append([-i, -(l - self.dimension)])
+            i += 1
+
+        #base clauses
+        for cl in self.B:
+            renumCl = []
+            for l in cl:
+                if l > 0: renumCl.append(l + self.dimension)
+                else: renumCl.append(l - self.dimension)
+            clauses.append(renumCl)
+
+        #E encoding
+        for key in self.hitmapC:
+            if len(self.hitmapC[key]) == 0: continue
+            if key > 0:
+                lit = key + self.dimension
+            else:
+                lit = key - self.dimension
+            clauses.append([-lit] + [ -l for l in self.hitmapC[key]])
+
+        #F encoding
+        act = maxVar(clauses)
+        for i in range(len(self.C)):
+            for l in self.C[i]:
+                cl = [-i]
+                acts = []
+                for d in self.hitmapC[-l]:
+                    act += 1
+                    acts.append(act)
+                    cube = [-d] + [-offset(k, self.dimension) for k in self.C[d - 1] if k != -l] #C[d] is activated and l is the only literal of C[d] satisfied by the model
+                    #eq encodes that act is equivalent to the cube
+                    eq = [[act] + [-x for x in cube]] # one way implication
+                    for c in cube: #the other way implication
+                        eq += [[-act, c]]
+                    clauses += eq
+                for d in self.hitmapB[-l]:             
+                    act += 1
+                    acts.append(act)
+                    cube = [-offset(k, self.dimension) for k in self.B[d] if k != -l] #B[d] is activated and l is the only literal of B[d] satisfied by the model
+                    #eq encodes that act is equivalent to the cube
+                    eq = [[act] + [-x for x in cube]] # one way implication
+                    for c in cube: #the other way implication
+                        eq += [[-act, c]]
+                    clauses += eq
+                cl = [-(i + 1)] + acts #either C[i] is activated or the literal -l is enforced by one of the activated clauses
+                clauses.append(cl)
+            #break
+
+        return clauses, [i for i in range(1, self.dimension + 1)]
     
 
     def exportBLSS(self):
@@ -332,10 +414,15 @@ class Counter:
         exportCNF(EBSSClauses, EBSSFile, EBSSInd)
         print(EBSSFile)
 
-        BSScoeff, BSSbase, BSSexp = self.approxMC(BSSFile)
-        BLSScoeff, BLSSbase, BLSSexp = self.approxMC(BLSSFile)
-        print(BSScoeff, BSSbase, BSSexp)
-        print(BLSScoeff, BLSSbase, BLSSexp)
+        FEBSSClauses, FEBSSInd = self.exportFEBSS()
+        FEBSSFile = "/var/tmp/FEBSS.cnf"
+        exportCNF(FEBSSClauses, FEBSSFile, FEBSSInd)
+        print(FEBSSFile)
+
+        #BSScoeff, BSSbase, BSSexp = self.approxMC(BSSFile)
+        #BLSScoeff, BLSSbase, BLSSexp = self.approxMC(BLSSFile)
+        #print(BSScoeff, BSSbase, BSSexp)
+        #print(BLSScoeff, BLSSbase, BLSSexp)
 
 def restricted_float(x):
     try:
