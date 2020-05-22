@@ -1,7 +1,6 @@
 import sys
 from math import log
 import subprocess as sp
-sys.path.insert(0, "/home/xbendik/usr/lib/lib/python3.7/site-packages")
 import random
 import time
 from statistics import median
@@ -88,17 +87,17 @@ def getAutarkyClauses(autarkyVars, C):
             cls.append(i)
     return cls
 
-def exportAutarky(a, C):
+def exportAutarky(a, C, target):
     mVar = max(variables(C))
     dim = len(a)
     res = "p cnf {} {}\n".format(mVar, dim)
     for c in a:
         res += " ".join([str(l) for l in C[c]]) + " 0\n"
-    open("autarky.cnf", "w").write(res)
+    open(target, "w").write(res)
 
 
 #uses encoding based on the model 2 from Efficient Autarkies
-def findAutarky(filename):
+def findAutarky(filename, target):
     C = parse(filename)
     X = variables(C)
     n = len(X)
@@ -140,11 +139,13 @@ def findAutarky(filename):
 
     autarkyVars = [x - 3*n for x in maxSat(F, Soft)]
     autarkyClauses = getAutarkyClauses(autarkyVars, C)
-    print("autarky size:", len(autarkyClauses))
-    print("v " + " ".join([str(x) for x in autarkyClauses]))
-    exportAutarky(autarkyClauses,C)
+    print("autarky vars size:", len(autarkyVars))
+    print("autarky clauses size:", len(autarkyClauses))
+    print("v " + " ".join([str(x + 1) for x in autarkyClauses]))
+    exportAutarky(autarkyClauses,C, target)
 
 if __name__ == "__main__":
     assert len(sys.argv) > 1
     filename = sys.argv[1]
-    findAutarky(filename)
+    target = sys.argv[2] if len(sys.argv) > 2 else "autarky.cnf"
+    findAutarky(filename, target)
