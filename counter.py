@@ -75,6 +75,7 @@ def offset(a, off):
 
 class Counter:
     def __init__(self, filename, e, d):
+        self.variant = "base"
         self.filename = filename
         self.C, self.B = parse(filename)
         self.autarky = True
@@ -115,6 +116,24 @@ class Counter:
         B = [self.C[c] for c in coAutarky]
         print("autarky size: {} of {} clauses".format(len(autarky), len(self.C)))
         self.C, self.B = C, B
+
+    def SS(self):
+        if self.variant == "base":
+            return self.exportSS()
+        elif self.variant == "B":
+            return self.exportBSS()
+        elif self.variant == "FEB":
+            return self.exportFEBSS()
+        assert False
+
+    def LSS(self):
+        if self.variant == "base":
+            return self.exportLSS()
+        elif self.variant == "B":
+            return self.exportBLSS()
+        elif self.variant == "FEB":
+            return self.exportFEBLSS()
+        assert False
 
     def exportSS(self):
         clauses = []
@@ -519,7 +538,7 @@ class Counter:
         assert False
 
     def parseGanak(self, out):
-        if "# END" not in out: return 0
+        if "# END" not in out: return -1
         reading = False
         for line in out.splitlines():
             if reading:
@@ -527,12 +546,12 @@ class Counter:
             if "# solutions" in line: reading = True
 
     def runExact(self):
-        SSClauses, SSInd = self.exportSS()
+        SSClauses, SSInd = self.SS()
         SSFile = "/var/tmp/SS.cnf"
         exportCNF(SSClauses, SSFile, SSInd)
         print(SSFile)
         
-        LSSClauses, LSSInd = self.exportLSS()
+        LSSClauses, LSSInd = self.LSS()
         LSSFile = "/var/tmp/LSS.cnf"
         exportCNF(LSSClauses, LSSFile, LSSInd)
         print(LSSFile)
@@ -602,6 +621,7 @@ import sys
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("MSS counter")
     parser.add_argument("--verbose", "-v", action="count", help = "Use the flag to increase the verbosity of the outputs. The flag can be used repeatedly.")
+    parser.add_argument("--variant", help = "Type of endocing (allowed values = {base,B,FEB}", default = "base")
     parser.add_argument("--epsilon", "-e", type = float, help = "Set the epsilon parameter, i.e., controls the approximation factor of the algorithm. Allowed values: float (> 0). Default value is 0.8.", default = 0.8)
     parser.add_argument("--delta", "-d", type = restricted_float, help = "Set the delta parameter, i.e., controls the probabilistic guarantees of the algorithm. Allowed values: float (0-1). Default value is 0.2.", default = 0.2)
     parser.add_argument("--threshold", type = int, help = "Set manually the value of threshold. By default, the value of threshold is computed based on the epsilon parameter to guarantee the approximate guarantees that are required/set by epsilon. If you set threshold manually, you affect the guaranteed approximate factor of the algorithm.")
@@ -614,9 +634,11 @@ if __name__ == "__main__":
         counter.tresh = args.threshold
     if args.iterations is not None:
         counter.t = args.iterations
+    counter.variant = args.variant
 
     print("epsilon guarantee:", args.epsilon)
     print("delta guarantee:", args.delta)
     print("threshold", counter.tresh)
     print("iterations to complete:", counter.t)
+    #counter.run()
     counter.runExact()
