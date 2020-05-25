@@ -105,7 +105,7 @@ class Counter:
 
     def autarkyTrim(self):
         assert self.B == []
-        out = run("timeout 300 python3 autarky.py {}".format(self.filename), 300)
+        out = run("timeout 3600 python3 autarky.py {}".format(self.filename), 3600)
         if "autarky vars" in out:
             for line in out.splitlines():
                 line = line.rstrip()
@@ -522,7 +522,7 @@ class Counter:
         return clauses, [i for i in range(1, self.dimension + 1)]
 
     def approxMC(self, filename):
-        timeout = 300
+        timeout = 3600
         cmd = "timeout {} approxmc {}".format(timeout, filename)
         out = run(cmd, timeout)
         for line in out.splitlines():
@@ -542,21 +542,21 @@ class Counter:
         reading = False
         for line in out.splitlines():
             if reading:
-                return int(line.rstrip())
+                return int(line.rstrip().split()[-1])
             if "# solutions" in line: reading = True
 
     def runExact(self):
         SSClauses, SSInd = self.SS()
-        SSFile = "/var/tmp/SS.cnf"
+        SSFile = "/var/tmp/SS_{}.cnf".format(self.rid)
         exportCNF(SSClauses, SSFile, SSInd)
         print(SSFile)
         
         LSSClauses, LSSInd = self.LSS()
-        LSSFile = "/var/tmp/LSS.cnf"
+        LSSFile = "/var/tmp/LSS_{}.cnf".format(self.rid)
         exportCNF(LSSClauses, LSSFile, LSSInd)
         print(LSSFile)
 
-        timeout = 300
+        timeout = 3600
         cmd = "timeout {} /home/xbendik/bin/ganak/build/ganak {}".format(timeout, SSFile)
         SScount = self.parseGanak(run(cmd, timeout))
         print("SS count:", SScount)

@@ -2,6 +2,7 @@ import sys
 from math import log
 import subprocess as sp
 import random
+from random import randint
 import time
 from statistics import median
 
@@ -58,7 +59,7 @@ def renderWcnf(Hard, Soft):
 def maxSat(Hard, Soft):
     satTimeout = 180
     wcnf = renderWcnf(Hard, Soft)
-    file = "testAutarky.wcnf"
+    file = "/var/tmp/testAutarky_{}.wcnf".format(randint(1,100000000))
     with open(file, "w") as f:
         f.write(wcnf)
 
@@ -142,7 +143,7 @@ def findAutarky(filename, target):
     print("autarky vars size:", len(autarkyVars))
     print("autarky clauses size:", len(autarkyClauses))
     print("v " + " ".join([str(x + 1) for x in autarkyClauses]))
-    exportAutarky(autarkyClauses,C, target)
+    #exportAutarky(autarkyClauses,C, target)
 
 if __name__ == "__main__":
     assert len(sys.argv) > 1
