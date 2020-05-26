@@ -33,7 +33,8 @@ def maxVar(C):
 def randomBool():
     return bool(random.getrandbits(1))
 
-def exportCNF(clauses, filename, ind = []):
+def exportCNF(clauses, filename, ind, varFile):
+    print("running export for ", filename)
     with open(filename, "w") as f:
         if len(ind) > 0:
             f.write("c ind " + " ".join([str(i) for i in ind]) + " 0\n")
@@ -41,6 +42,10 @@ def exportCNF(clauses, filename, ind = []):
         f.write("p cnf {} {}\n".format(maxVar, len(clauses)))
         for cl in clauses:
             f.write(" ".join([str(l) for l in cl]) + " 0\n")
+
+    print(varFile)
+    with open(varFile, "w") as f:
+        f.write(",".join ([str(v) for v in ind]))
 
 #parse .gcnf instance,
 #returns a pair C,B where B contains the base (hard) clauses and C the other clauses
@@ -545,25 +550,46 @@ class Counter:
                 return int(line.rstrip().split()[-1])
             if "# solutions" in line: reading = True
 
+    def parseProjMC(self, out):
+        for line in out.splitlines():
+            if line[:2] == "s ":
+                return int(line.rstrip().split()[1])
+
     def runExact(self):
+        self.ganak = False
         SSClauses, SSInd = self.SS()
         SSFile = "/var/tmp/SS_{}.cnf".format(self.rid)
-        exportCNF(SSClauses, SSFile, SSInd)
+        SSIndFile = SSFile[:-4] + "_{}.cnf".format(len(SSInd))
+        exportCNF(SSClauses, SSFile, SSInd, SSIndFile)
         print(SSFile)
         
         LSSClauses, LSSInd = self.LSS()
         LSSFile = "/var/tmp/LSS_{}.cnf".format(self.rid)
-        exportCNF(LSSClauses, LSSFile, LSSInd)
+        LSSIndFile = LSSFile[:-4] + "_{}.cnf".format(len(LSSInd))
+        exportCNF(LSSClauses, LSSFile, LSSInd, LSSIndFile)
         print(LSSFile)
 
         timeout = 3600
-        cmd = "timeout {} /home/xbendik/bin/ganak/build/ganak {}".format(timeout, SSFile)
-        SScount = self.parseGanak(run(cmd, timeout))
-        print("SS count:", SScount)
+        if self.ganak:
+            cmd = "timeout {} /home/xbendik/bin/ganak/build/ganak {}".format(timeout, SSFile)
+            SScount = self.parseGanak(run(cmd, timeout))
+            print("SS count:", SScount)
 
-        cmd = "timeout {} /home/xbendik/bin/ganak/build/ganak {}".format(timeout, LSSFile)
-        LSScount = self.parseGanak(run(cmd, timeout))
-        print("LSS count:", LSScount)
+            cmd = "timeout {} /home/xbendik/bin/ganak/build/ganak {}".format(timeout, LSSFile)
+            LSScount = self.parseGanak(run(cmd, timeout))
+            print("LSS count:", LSScount)
+        else:
+            cmd = "timeout {} ./projMC_linux {} -fpv=\"{}\"".format(timeout, SSFile, SSIndFile)
+            print(cmd)
+            SScount = self.parseProjMC(run(cmd, timeout))
+            print("SS count:", SScount)
+
+            cmd = "timeout {} ./projMC_linux {} -fpv=\"{}\"".format(timeout, LSSFile, LSSIndFile)
+            print(cmd)
+            LSScount = self.parseProjMC(run(cmd, timeout))
+            print("LSS count:", LSScount)
+            
+
 
         print("MSS count:", SScount - LSScount)
 
