@@ -78,6 +78,9 @@ def offset(a, off):
         return a + off
     return a - off
 
+def offsetClause(cl, off):
+    return [offset(l, off) for l in cl]    
+
 class Counter:
     def __init__(self, filename):
         self.variant = "base"
@@ -86,8 +89,8 @@ class Counter:
         self.autarky = True
         if self.autarky and filename[-4:] == ".cnf":
             self.autarkyTrim()
-
         self.dimension = len(self.C)
+        self.maxVar = 2*self.dimension + 2*maxVar(self.C + self.B)
         self.XOR = None
         self.checks = 0
         self.rid = randint(1,10000000)
@@ -95,16 +98,27 @@ class Counter:
         for cl in (self.B + self.C):
             flatten += cl
         self.lits = set([l for l in flatten])
-        self.hitmapC = {l:[] for l in self.lits}
+        self.hitmapC = {}
+        self.hitmapB = {}
+        for l in self.lits:
+            self.hitmapC[l] = []
+            self.hitmapC[-l] = []
+            self.hitmapB[l] = []
+            self.hitmapB[-l] = []
         for i in range(len(self.C)):
             for l in self.C[i]:
                 assert l in self.lits
                 self.hitmapC[l].append(i + 1) #+1 offset
-        self.hitmapB = {l:[] for l in self.lits}
         for i in range(len(self.B)):
             for l in self.B[i]:
                 assert l in self.lits
                 self.hitmapB[l].append(i) #note that here we store 0-based index as opposed to hitmapC
+
+        #selection variables for individual wrappers. True means selected
+        self.w2 = False
+        self.w3 = False
+        self.w4 = False
+        self.w5 = False
 
     def autarkyTrim(self):
         assert self.B == []
@@ -121,56 +135,60 @@ class Counter:
         self.C, self.B = C, B
 
     def SS(self):
-        return self.W4()
+        clauses = self.W1()
+        if self.w4:
+            clauses += self.W4()
+        if self.w5:
+            act = max(self.maxVar, maxVar(clauses))
+            clauses += self.W5(act)
+
+        inds = [i for i in range(1, self.dimension + 1)]
+        return clauses, inds
 
     def LSS(self):
-        return self.R4()
+        clauses, inds = self.SS()
+        act = max(self.maxVar, maxVar(clauses))
+        clauses += self.nonMSSBase(act)
+        return clauses, inds
 
 
     #VARIABLES INFO
     #Activation literals A: 1 -- dimension
     #Activation literals B: dimension + 1 -- 2*dimension
     #F's variables: 2*dimension + 1 -- 2*dimension + Vars(F)
+    #F's primed variables: 2*dimension + Vars(F) + 1 -- 2*dimension + 2*Vars(F)
     def W1(self):
         clauses = []
 
         i = 1
         for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
+            renumCl = offsetClause(cl, 2*self.dimension)
             renumCl.append(i)
             clauses.append(renumCl)
             i += 1
         for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
-            clauses.append(renumCl)
-        return clauses, [i for i in range(1, self.dimension + 1)]
-        
-    def nonMSSBase(self):
+            clauses.append(offsetClause(cl, 2*self.dimension))
+        return clauses
+
+    def nonMSSBase(self, act):
         clauses = []
-        #E is sat
+        #the superset E is satisfiable
         i = 1
         for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
+            renumCl = offsetClause(cl, 2*self.dimension + maxVar(self.C + self.B))
             renumCl.append(i + self.dimension)
             clauses.append(renumCl)
             i += 1
+        for cl in self.B:
+            clauses.append(offsetClause(cl, 2*self.dimension + maxVar(self.C + self.B)))
+        
 
         #E supseteq S
         for i in range(1, self.dimension + 1):
             clauses.append([i, - (i + self.dimension)])
 
         proper = []
-        mv = maxVar(clauses)
-        act = mv
+        mv = act
         for i in range(1, self.dimension + 1):
             act += 1
             proper += [[act, i], [act, -(i + self.dimension)]] 
@@ -178,14 +196,9 @@ class Counter:
 
         clauses += proper
         return clauses
- 
-    def R1(self):
-        clauses, inds = self.W1()
-        return clauses + self.nonMSSBase(), inds
 
     def W4(self):
-        clauses, inds = self.W1()
-
+        clauses = []
         #max model
         i = 1
         for cl in self.C:
@@ -197,11 +210,38 @@ class Counter:
                     clauses.append([-i, -(l - 2*self.dimension)])
             i += 1
 
-        return clauses, inds
+        return clauses
 
-    def R4(self):
-        clauses, inds = self.W4()
-        return clauses + self.nonMSSBase(), inds
+    def W5(self, act):
+        clauses = []
+        for i in range(len(self.C)):
+            for l in self.C[i]:
+                cl = [-i]
+                acts = []
+                for d in self.hitmapC[-l]:
+                    act += 1
+                    acts.append(act)
+                    cube = [-d] + [-offset(k, 2*self.dimension) for k in self.C[d - 1] if k != -l] #C[d] is activated and l is the only literal of C[d] satisfied by the model
+                    #eq encodes that act is equivalent to the cube
+                    eq = [[act] + [-x for x in cube]] # one way implication
+                    for c in cube: #the other way implication
+                        eq += [[-act, c]]
+                    clauses += eq
+                for d in self.hitmapB[-l]:
+                    act += 1
+                    acts.append(act)
+                    print(d, len(self.B), len(self.hitmapB[-l]))
+                    cube = [-offset(k, 2*self.dimension) for k in self.B[d] if k != -l] #B[d] is activated and l is the only literal of B[d] satisfied by the model
+                    #eq encodes that act is equivalent to the cube
+                    eq = [[act] + [-x for x in cube]] # one way implication
+                    for c in cube: #the other way implication
+                        eq += [[-act, c]]
+                    clauses += eq
+                cl = [-(i + 1)] + acts #either C[i] is activated or the literal -l is enforced by one of the activated clauses
+                clauses.append(cl)
+            #break  
+        return clauses
+
 
     def parseGanak(self, out):
         if "# END" not in out: return -1
@@ -260,9 +300,18 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="count", help = "Use the flag to increase the verbosity of the outputs. The flag can be used repeatedly.")
     parser.add_argument("--variant", help = "Type of endocing (allowed values = {base,B,FEB}", default = "base")
     parser.add_argument("input_file", help = "A path to the input file. Either a .cnf or a .gcnf instance. See ./examples/")
+    parser.add_argument("--w2", action='store_true', help = "Use the wrapper W2 (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w3", action='store_true', help = "Use the wrapper W3 (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w4", action='store_true', help = "Use the wrapper W4 (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w5", action='store_true', help = "Use the wrapper W5 (multiple wrappers can be used simultaneously)")
     args = parser.parse_args()
+
+    print(args.w2, args.w4, args.w5)
 
     counter = Counter(args.input_file)
     counter.variant = args.variant
+    counter.w2 = args.w2
+    counter.w4 = args.w4
+    counter.w5 = args.w5
 
     counter.runExact()
