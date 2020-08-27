@@ -78,44 +78,59 @@ def offset(a, off):
         return a + off
     return a - off
 
+def offsetClause(cl, off):
+    return [offset(l, off) for l in cl]    
+
 class Counter:
-    def __init__(self, filename, e, d):
+    def __init__(self, filename, useAutarky):
         self.variant = "base"
         self.filename = filename
         self.C, self.B = parse(filename)
-        self.autarky = True
+        self.autarky = useAutarky
         if self.autarky and filename[-4:] == ".cnf":
             self.autarkyTrim()
-
         self.dimension = len(self.C)
+        self.maxVar = 2*self.dimension + 2*maxVar(self.C + self.B)
         self.XOR = None
-        self.tresh = 1 + 9.84 * (1 + (e / (1 + e)))*(1 + 1/e)*(1 + 1/e)
-        self.t = int(17 * log(3 / d,2));
         self.checks = 0
         self.rid = randint(1,10000000)
         flatten = []
         for cl in (self.B + self.C):
             flatten += cl
         self.lits = set([l for l in flatten])
-        self.hitmapC = {l:[] for l in self.lits}
+        self.hitmapC = {}
+        self.hitmapB = {}
+        for l in self.lits:
+            self.hitmapC[l] = []
+            self.hitmapC[-l] = []
+            self.hitmapB[l] = []
+            self.hitmapB[-l] = []
         for i in range(len(self.C)):
             for l in self.C[i]:
                 assert l in self.lits
                 self.hitmapC[l].append(i + 1) #+1 offset
-        self.hitmapB = {l:[] for l in self.lits}
         for i in range(len(self.B)):
             for l in self.B[i]:
                 assert l in self.lits
                 self.hitmapB[l].append(i) #note that here we store 0-based index as opposed to hitmapC
 
+        #selection variables for individual wrappers. True means selected
+        self.w2 = False
+        self.w3 = False
+        self.w4 = False
+        self.w5 = False
+
     def autarkyTrim(self):
         assert self.B == []
-        out = run("timeout 3600 python3 autarky.py {}".format(self.filename), 3600)
+        cmd = "timeout 3600 python3 autarky.py {}".format(self.filename)
+        print(cmd)
+        out = run(cmd, 3600)
         if "autarky vars" in out:
             for line in out.splitlines():
                 line = line.rstrip()
                 if line[:2] == "v ":
                     autarky = [int(c) - 1 for c in line.split()[1:]]
+        else: return
         coAutarky = [i for i in range(len(self.C)) if i not in autarky]
         C = [self.C[c] for c in autarky]
         B = [self.C[c] for c in coAutarky]
@@ -123,263 +138,85 @@ class Counter:
         self.C, self.B = C, B
 
     def SS(self):
-        if self.variant == "base":
-            return self.exportSS()
-        elif self.variant == "B":
-            return self.exportBSS()
-        elif self.variant == "FEB":
-            return self.exportFEBSS()
-        assert False
+        clauses = self.W1()
+        if self.w4:
+            clauses += self.W4()
+        if self.w5:
+            act = max(self.maxVar, maxVar(clauses))
+            clauses += self.W5(act)
+
+        inds = [i for i in range(1, self.dimension + 1)]
+        return clauses, inds
 
     def LSS(self):
-        if self.variant == "base":
-            return self.exportLSS()
-        elif self.variant == "B":
-            return self.exportBLSS()
-        elif self.variant == "FEB":
-            return self.exportFEBLSS()
-        assert False
+        clauses, inds = self.SS()
+        act = max(self.maxVar, maxVar(clauses))
+        clauses += self.nonMSSBase(act)
+        return clauses, inds
 
-    def exportSS(self):
+
+    #VARIABLES INFO
+    #Activation literals A: 1 -- dimension
+    #Activation literals B: dimension + 1 -- 2*dimension
+    #F's variables: 2*dimension + 1 -- 2*dimension + Vars(F)
+    #F's primed variables: 2*dimension + Vars(F) + 1 -- 2*dimension + 2*Vars(F)
+    def W1(self):
         clauses = []
-        xclauses = []
 
         i = 1
         for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + self.dimension)
-                else: renumCl.append(l - self.dimension)
+            renumCl = offsetClause(cl, 2*self.dimension)
             renumCl.append(i)
             clauses.append(renumCl)
             i += 1
         for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + self.dimension)
-                else: renumCl.append(l - self.dimension)
-            clauses.append(renumCl)
-        return clauses, [i for i in range(1, self.dimension + 1)]
+            clauses.append(offsetClause(cl, 2*self.dimension))
+        return clauses
 
-    def exportBSS(self):
+    def nonMSSBase(self, act):
         clauses = []
-        xclauses = []
-
+        #the superset E is satisfiable
         i = 1
         for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + self.dimension)
-                else: renumCl.append(l - self.dimension)
-            renumCl.append(i)
-            clauses.append(renumCl)
-            i += 1
-
-        #max model
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: 
-                    clauses.append([-i, -(l + self.dimension)])
-                else:
-                    clauses.append([-i, -(l - self.dimension)])
-            i += 1
-
-        #base clauses
-        for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + self.dimension)
-                else: renumCl.append(l - self.dimension)
-            clauses.append(renumCl)
-        return clauses, [i for i in range(1, self.dimension + 1)]
-
-    def exportEBSS(self):
-        clauses = []
-        xclauses = []
-
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + self.dimension)
-                else: renumCl.append(l - self.dimension)
-            renumCl.append(i)
-            clauses.append(renumCl)
-            i += 1
-
-        #max model
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: 
-                    clauses.append([-i, -(l + self.dimension)])
-                else:
-                    clauses.append([-i, -(l - self.dimension)])
-            i += 1
-
-        for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + self.dimension)
-                else: renumCl.append(l - self.dimension)
-            clauses.append(renumCl)
-
-        for key in self.hitmapC:
-            if len(self.hitmapC[key]) == 0: continue
-            if key > 0:
-                lit = key + self.dimension
-            else:
-                lit = key - self.dimension
-            clauses.append([-lit] + [ -l for l in self.hitmapC[key]])
-
-        return clauses, [i for i in range(1, self.dimension + 1)]
-
-
-    def exportFEBSS(self):
-        clauses = []
-        xclauses = []
-
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + self.dimension)
-                else: renumCl.append(l - self.dimension)
-            renumCl.append(i)
-            clauses.append(renumCl)
-            i += 1
-
-        #max model
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: 
-                    clauses.append([-i, -(l + self.dimension)])
-                else:
-                    clauses.append([-i, -(l - self.dimension)])
-            i += 1
-
-        #base clauses
-        for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + self.dimension)
-                else: renumCl.append(l - self.dimension)
-            clauses.append(renumCl)
-
-        #E encoding
-        for key in self.hitmapC:
-            if len(self.hitmapC[key]) == 0: continue
-            if key > 0:
-                lit = key + self.dimension
-            else:
-                lit = key - self.dimension
-            clauses.append([-lit] + [ -l for l in self.hitmapC[key]])
-
-        #F encoding
-        act = maxVar(clauses)
-        for i in range(len(self.C)):
-            for l in self.C[i]:
-                cl = [-i]
-                acts = []
-                for d in self.hitmapC[-l]:
-                    act += 1
-                    acts.append(act)
-                    cube = [-d] + [-offset(k, self.dimension) for k in self.C[d - 1] if k != -l] #C[d] is activated and l is the only literal of C[d] satisfied by the model
-                    #eq encodes that act is equivalent to the cube
-                    eq = [[act] + [-x for x in cube]] # one way implication
-                    for c in cube: #the other way implication
-                        eq += [[-act, c]]
-                    clauses += eq
-                for d in self.hitmapB[-l]:             
-                    act += 1
-                    acts.append(act)
-                    cube = [-offset(k, self.dimension) for k in self.B[d] if k != -l] #B[d] is activated and l is the only literal of B[d] satisfied by the model
-                    #eq encodes that act is equivalent to the cube
-                    eq = [[act] + [-x for x in cube]] # one way implication
-                    for c in cube: #the other way implication
-                        eq += [[-act, c]]
-                    clauses += eq
-                cl = [-(i + 1)] + acts #either C[i] is activated or the literal -l is enforced by one of the activated clauses
-                clauses.append(cl)
-            #break
-
-        return clauses, [i for i in range(1, self.dimension + 1)]
-    
-    def exportFEBLSS(self):
-        clauses = []
-        xclauses = []
-
-        #S is sat
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
-            renumCl.append(i)
-            clauses.append(renumCl)
-            i += 1
-
-        #the base clauses
-        for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
-            clauses.append(renumCl)
-
-        #max model
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: 
-                    clauses.append([-i, -(l + 2*self.dimension)])
-                else:
-                    clauses.append([-i, -(l - 2*self.dimension)])
-            i += 1
-
-        #E is sat
-        i = 1
-        mv = maxVar(clauses)
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + mv)
-                else: renumCl.append(l - mv)
+            renumCl = offsetClause(cl, 2*self.dimension + maxVar(self.C + self.B))
             renumCl.append(i + self.dimension)
             clauses.append(renumCl)
             i += 1
-
-        #the base clauses
         for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + mv)
-                else: renumCl.append(l - mv)
-            clauses.append(renumCl)
+            clauses.append(offsetClause(cl, 2*self.dimension + maxVar(self.C + self.B)))
+        
 
         #E supseteq S
         for i in range(1, self.dimension + 1):
             clauses.append([i, - (i + self.dimension)])
 
         proper = []
-        mv = maxVar(clauses)
-        act = mv
+        mv = act
         for i in range(1, self.dimension + 1):
             act += 1
             proper += [[act, i], [act, -(i + self.dimension)]] 
         proper.append([-a for a in range(mv + 1, act + 1)])
 
         clauses += proper
+        return clauses
 
-        #F encoding
-        act = maxVar(clauses)
+    def W4(self):
+        clauses = []
+        #max model
+        i = 1
+        for cl in self.C:
+            renumCl = []
+            for l in cl:
+                if l > 0:
+                    clauses.append([-i, -(l + 2*self.dimension)])
+                else:
+                    clauses.append([-i, -(l - 2*self.dimension)])
+            i += 1
+
+        return clauses
+
+    def W5(self, act):
+        clauses = []
         for i in range(len(self.C)):
             for l in self.C[i]:
                 cl = [-i]
@@ -393,7 +230,7 @@ class Counter:
                     for c in cube: #the other way implication
                         eq += [[-act, c]]
                     clauses += eq
-                for d in self.hitmapB[-l]:             
+                for d in self.hitmapB[-l]:
                     act += 1
                     acts.append(act)
                     cube = [-offset(k, 2*self.dimension) for k in self.B[d] if k != -l] #B[d] is activated and l is the only literal of B[d] satisfied by the model
@@ -404,143 +241,9 @@ class Counter:
                     clauses += eq
                 cl = [-(i + 1)] + acts #either C[i] is activated or the literal -l is enforced by one of the activated clauses
                 clauses.append(cl)
-        return clauses, [i for i in range(1, self.dimension + 1)]
+            #break  
+        return clauses
 
-    def exportBLSS(self):
-        clauses = []
-        xclauses = []
-
-        #S is sat
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
-            renumCl.append(i)
-            clauses.append(renumCl)
-            i += 1
-
-        #the base clauses
-        for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
-            clauses.append(renumCl)
-
-        #max model
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: 
-                    clauses.append([-i, -(l + 2*self.dimension)])
-                else:
-                    clauses.append([-i, -(l - 2*self.dimension)])
-            i += 1
-
-        #E is sat
-        i = 1
-        mv = maxVar(clauses)
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + mv)
-                else: renumCl.append(l - mv)
-            renumCl.append(i + self.dimension)
-            clauses.append(renumCl)
-            i += 1
-
-        #the base clauses
-        for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + mv)
-                else: renumCl.append(l - mv)
-            clauses.append(renumCl)
-
-        #E supseteq S
-        for i in range(1, self.dimension + 1):
-            clauses.append([i, - (i + self.dimension)])
-
-        proper = []
-        mv = maxVar(clauses)
-        act = mv
-        for i in range(1, self.dimension + 1):
-            act += 1
-            proper += [[act, i], [act, -(i + self.dimension)]] 
-        proper.append([-a for a in range(mv + 1, act + 1)])
-
-        clauses += proper
-
-        return clauses, [i for i in range(1, self.dimension + 1)]
-
-    def exportLSS(self):
-        clauses = []
-        xclauses = []
-
-        #S is sat
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
-            renumCl.append(i)
-            clauses.append(renumCl)
-            i += 1
-
-        #E is sat
-        i = 1
-        for cl in self.C:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
-            renumCl.append(i + self.dimension)
-            clauses.append(renumCl)
-            i += 1
-
-        #the base clauses
-        for cl in self.B:
-            renumCl = []
-            for l in cl:
-                if l > 0: renumCl.append(l + 2*self.dimension)
-                else: renumCl.append(l - 2*self.dimension)
-            clauses.append(renumCl)
-
-        #E supseteq S
-        for i in range(1, self.dimension + 1):
-            clauses.append([i, - (i + self.dimension)])
-
-        proper = []
-        mv = maxVar(clauses)
-        act = mv
-        for i in range(1, self.dimension + 1):
-            act += 1
-            proper += [[act, i], [act, -(i + self.dimension)]] 
-        proper.append([-a for a in range(mv + 1, act + 1)])
-
-        clauses += proper
-
-        return clauses, [i for i in range(1, self.dimension + 1)]
-
-    def approxMC(self, filename):
-        timeout = 3600
-        cmd = "timeout {} approxmc {}".format(timeout, filename)
-        out = run(cmd, timeout)
-        for line in out.splitlines():
-            if "Number of solutions is" in line:
-                line = line.split("Number of solutions is:")[1].strip()
-                assert "x" in line
-                line = line.split("x")
-                coeff = int(line[0].strip())
-                base = line[1].strip().split("^")[0]
-                exp = line[1].strip().split("^")[1]
-                return coeff, base, exp
-        print("timeout")
-        assert False
 
     def parseGanak(self, out):
         if "# END" not in out: return -1
@@ -556,7 +259,7 @@ class Counter:
                 return int(line.rstrip().split()[1])
 
     def runExact(self):
-        self.ganak = False
+        self.ganak = True
         SSClauses, SSInd = self.SS()
         SSFile = "/var/tmp/SS_{}.cnf".format(self.rid)
         SSIndFile = SSFile[:-4] + "_{}.cnf".format(len(SSInd))
@@ -572,10 +275,12 @@ class Counter:
         timeout = 3600
         if self.ganak:
             cmd = "timeout {} /home/xbendik/bin/ganak/build/ganak {}".format(timeout, SSFile)
+            print(cmd)
             SScount = self.parseGanak(run(cmd, timeout))
             print("SS count:", SScount)
 
             cmd = "timeout {} /home/xbendik/bin/ganak/build/ganak {}".format(timeout, LSSFile)
+            print(cmd)
             LSScount = self.parseGanak(run(cmd, timeout))
             print("LSS count:", LSScount)
         else:
@@ -588,83 +293,29 @@ class Counter:
             print(cmd)
             LSScount = self.parseProjMC(run(cmd, timeout))
             print("LSS count:", LSScount)
-            
-
-
-        print("MSS count:", SScount - LSScount)
-
-    def run(self):
-        SSClauses, SSInd = self.exportSS()
-        SSFile = "/var/tmp/SS.cnf"
-        exportCNF(SSClauses, SSFile, SSInd)
-        print(SSFile)
-        
-        LSSClauses, LSSInd = self.exportLSS()
-        LSSFile = "/var/tmp/LSS.cnf"
-        exportCNF(LSSClauses, LSSFile, LSSInd)
-        print(LSSFile)
-
-        BSSClauses, BSSInd = self.exportBSS()
-        BSSFile = "/var/tmp/BSS.cnf"
-        exportCNF(BSSClauses, BSSFile, BSSInd)
-        print(BSSFile)
-
-        BLSSClauses, BLSSInd = self.exportBLSS()
-        BLSSFile = "/var/tmp/BLSS.cnf"
-        exportCNF(BLSSClauses, BLSSFile, BLSSInd)
-        print(BLSSFile)
-
-        EBSSClauses, EBSSInd = self.exportEBSS()
-        EBSSFile = "/var/tmp/EBSS.cnf"
-        exportCNF(EBSSClauses, EBSSFile, EBSSInd)
-        print(EBSSFile)
-
-        FEBSSClauses, FEBSSInd = self.exportFEBSS()
-        FEBSSFile = "/var/tmp/FEBSS.cnf"
-        exportCNF(FEBSSClauses, FEBSSFile, FEBSSInd)
-        print(FEBSSFile)
-
-        FEBLSSClauses, FEBLSSInd = self.exportFEBLSS()
-        FEBLSSFile = "/var/tmp/FEBLSS.cnf"
-        exportCNF(FEBLSSClauses, FEBLSSFile, FEBLSSInd)
-        print(FEBLSSFile)
-        #BSScoeff, BSSbase, BSSexp = self.approxMC(BSSFile)
-        #BLSScoeff, BLSSbase, BLSSexp = self.approxMC(BLSSFile)
-        #print(BSScoeff, BSSbase, BSSexp)
-        #print(BLSScoeff, BLSSbase, BLSSexp)
-
-def restricted_float(x):
-    try:
-        x = float(x)
-    except ValueError:
-        raise argparse.ArgumentTypeError("%r not a floating-point literal" % (x,))
-
-    if x < 0.0 or x > 1.0:
-        raise argparse.ArgumentTypeError("%r not in range [0.0, 1.0]"%(x,))
-    return x
+         
+        MSScount = -1
+        if (SScount >= 0) and (LSScount >= 0): MSScount = SScount - LSScount
+        print("MSS count:", MSScount)
 
 import sys
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("MSS counter")
     parser.add_argument("--verbose", "-v", action="count", help = "Use the flag to increase the verbosity of the outputs. The flag can be used repeatedly.")
     parser.add_argument("--variant", help = "Type of endocing (allowed values = {base,B,FEB}", default = "base")
-    parser.add_argument("--epsilon", "-e", type = float, help = "Set the epsilon parameter, i.e., controls the approximation factor of the algorithm. Allowed values: float (> 0). Default value is 0.8.", default = 0.8)
-    parser.add_argument("--delta", "-d", type = restricted_float, help = "Set the delta parameter, i.e., controls the probabilistic guarantees of the algorithm. Allowed values: float (0-1). Default value is 0.2.", default = 0.2)
-    parser.add_argument("--threshold", type = int, help = "Set manually the value of threshold. By default, the value of threshold is computed based on the epsilon parameter to guarantee the approximate guarantees that are required/set by epsilon. If you set threshold manually, you affect the guaranteed approximate factor of the algorithm.")
-    parser.add_argument("--iterations", type = int, help = "Set manually the number of iterations the algorithm performs to find the MUS count estimate. By default, the number of iterations is determined by the value of the delta parameter (which controls the required probabilistic guarantees). By manually setting the number of iterations, you affect the probabilistic guarantees.")
     parser.add_argument("input_file", help = "A path to the input file. Either a .cnf or a .gcnf instance. See ./examples/")
+    parser.add_argument("--w2", action='store_true', help = "Use the wrapper W2, i.e., autarky (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w3", action='store_true', help = "Use the wrapper W3 (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w4", action='store_true', help = "Use the wrapper W4 (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w5", action='store_true', help = "Use the wrapper W5 (multiple wrappers can be used simultaneously)")
     args = parser.parse_args()
 
-    counter = Counter(args.input_file, args.epsilon, args.delta)
-    if args.threshold is not None:
-        counter.tresh = args.threshold
-    if args.iterations is not None:
-        counter.t = args.iterations
-    counter.variant = args.variant
+    print(args.w2, args.w4, args.w5)
 
-    print("epsilon guarantee:", args.epsilon)
-    print("delta guarantee:", args.delta)
-    print("threshold", counter.tresh)
-    print("iterations to complete:", counter.t)
-    #counter.run()
+    counter = Counter(args.input_file, args.w2)
+    counter.variant = args.variant
+    counter.w2 = args.w2
+    counter.w4 = args.w4
+    counter.w5 = args.w5
+
     counter.runExact()
