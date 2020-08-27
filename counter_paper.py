@@ -122,12 +122,15 @@ class Counter:
 
     def autarkyTrim(self):
         assert self.B == []
-        out = run("timeout 3600 python3 autarky.py {}".format(self.filename), 3600)
+        cmd = "timeout 3600 python3 autarky.py {}".format(self.filename)
+        print(cmd)
+        out = run(cmd, 3600)
         if "autarky vars" in out:
             for line in out.splitlines():
                 line = line.rstrip()
                 if line[:2] == "v ":
                     autarky = [int(c) - 1 for c in line.split()[1:]]
+        else: return
         coAutarky = [i for i in range(len(self.C)) if i not in autarky]
         C = [self.C[c] for c in autarky]
         B = [self.C[c] for c in coAutarky]
@@ -230,7 +233,6 @@ class Counter:
                 for d in self.hitmapB[-l]:
                     act += 1
                     acts.append(act)
-                    print(d, len(self.B), len(self.hitmapB[-l]))
                     cube = [-offset(k, 2*self.dimension) for k in self.B[d] if k != -l] #B[d] is activated and l is the only literal of B[d] satisfied by the model
                     #eq encodes that act is equivalent to the cube
                     eq = [[act] + [-x for x in cube]] # one way implication
@@ -291,8 +293,10 @@ class Counter:
             print(cmd)
             LSScount = self.parseProjMC(run(cmd, timeout))
             print("LSS count:", LSScount)
-            
-        print("MSS count:", SScount - LSScount)
+         
+        MSScount = -1
+        if (SScount >= 0) and (LSScount >= 0): MSScount = SScount - LSScount
+        print("MSS count:", MSScount)
 
 import sys
 if __name__ == "__main__":
