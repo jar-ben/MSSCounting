@@ -6,6 +6,21 @@ import time
 from statistics import median
 from random import randint
 import argparse
+import os
+from functools import partial
+import signal
+
+def receiveSignal(tempFiles, signalNumber, frame):
+    print(tempFiles, signalNumber, frame)
+    print('Received signal:', signalNumber)
+    print('Cleaning tmp files')
+    for f in tempFiles:
+        if os.path.exists(f):
+            print("removing", f, "...", end="")
+            os.remove(f)
+            print("removed")
+    sys.exit()
+
 
 def run(cmd, timeout, ttl = 3):
     proc = sp.Popen([cmd], stdout=sp.PIPE, stderr=sp.PIPE, shell=True)
@@ -119,6 +134,12 @@ class Counter:
         self.w3 = False
         self.w4 = False
         self.w5 = False
+
+        self.SSFile = "/var/obj/xbendik/SS_{}.cnf".format(self.rid)
+        self.SSIndFile = self.SSFile[:-4] + "_ind.cnf"
+        self.LSSFile = "/var/obj/xbendik/LSS_{}.cnf".format(self.rid)
+        self.LSSIndFile = self.LSSFile[:-4] + "_ind.cnf"
+        self.tmpFiles = [self.SSFile, self.SSIndFile, self.LSSFile, self.LSSIndFile]
 
     def autarkyTrim(self):
         assert self.B == []
@@ -261,14 +282,14 @@ class Counter:
     def runExact(self):
         self.ganak = True
         SSClauses, SSInd = self.SS()
-        SSFile = "/var/tmp/SS_{}.cnf".format(self.rid)
-        SSIndFile = SSFile[:-4] + "_{}.cnf".format(len(SSInd))
+        SSFile = self.SSFile
+        SSIndFile = self.SSIndFile
         exportCNF(SSClauses, SSFile, SSInd, SSIndFile)
         print(SSFile)
         
         LSSClauses, LSSInd = self.LSS()
-        LSSFile = "/var/tmp/LSS_{}.cnf".format(self.rid)
-        LSSIndFile = LSSFile[:-4] + "_{}.cnf".format(len(LSSInd))
+        LSSFile = self.LSSFile
+        LSSIndFile = self.LSSIndFile
         exportCNF(LSSClauses, LSSFile, LSSInd, LSSIndFile)
         print(LSSFile)
 
@@ -297,6 +318,10 @@ class Counter:
         MSScount = -1
         if (SScount >= 0) and (LSScount >= 0): MSScount = SScount - LSScount
         print("MSS count:", MSScount)
+        os.remove(LSSFile)
+        os.remove(LSSIndFile)
+        os.remove(SSFile)
+        os.remove(SSIndFile)
 
 import sys
 if __name__ == "__main__":
@@ -313,6 +338,10 @@ if __name__ == "__main__":
     print(args.w2, args.w4, args.w5)
 
     counter = Counter(args.input_file, args.w2)
+    signal.signal(signal.SIGHUP, partial(receiveSignal, counter.tmpFiles))
+    signal.signal(signal.SIGINT, partial(receiveSignal, counter.tmpFiles))
+    signal.signal(signal.SIGTERM, partial(receiveSignal, counter.tmpFiles))
+
     counter.variant = args.variant
     counter.w2 = args.w2
     counter.w4 = args.w4

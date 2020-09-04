@@ -5,6 +5,7 @@ import random
 from random import randint
 import time
 from statistics import median
+import os
 
 def is_number(n):
     is_number = True
@@ -59,7 +60,7 @@ def renderWcnf(Hard, Soft):
 def maxSat(Hard, Soft):
     satTimeout = 180
     wcnf = renderWcnf(Hard, Soft)
-    file = "/var/tmp/testAutarky_{}.wcnf".format(randint(1,100000000))
+    file = "/var/obj/xbendik/testAutarky_{}.wcnf".format(randint(1,100000000))
     with open(file, "w") as f:
         f.write(wcnf)
 
@@ -75,7 +76,10 @@ def maxSat(Hard, Soft):
     for line in out.splitlines():
         if line[:2] == "v ": 
             model = [int(l) for l in line.rstrip().split()[1:]]
-    
+   
+
+    os.remove(file)
+    os.remove(file+".cnf")
     return [x for x in model if x > 0]
 
 def getAutarkyClauses(autarkyVars, C):
