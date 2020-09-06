@@ -10,6 +10,8 @@ import os
 from functools import partial
 import signal
 
+
+
 def receiveSignal(tempFiles, signalNumber, frame):
     print(tempFiles, signalNumber, frame)
     print('Received signal:', signalNumber)
@@ -97,10 +99,12 @@ def offsetClause(cl, off):
     return [offset(l, off) for l in cl]    
 
 class Counter:
-    def __init__(self, filename, useAutarky):
+    def __init__(self, filename, useAutarky, useImu = True):
         self.variant = "base"
         self.filename = filename
         self.C, self.B = parse(filename)
+        self.imuSize = 0
+        self.imu = useImu
         self.autarky = useAutarky
         if self.autarky and filename[-4:] == ".cnf":
             self.autarkyTrim()
@@ -135,9 +139,9 @@ class Counter:
         self.w4 = False
         self.w5 = False
 
-        self.SSFile = "/var/obj/xbendik/SS_{}.cnf".format(self.rid)
+        self.SSFile = "/var/tmp/SS_{}.cnf".format(self.rid)
         self.SSIndFile = self.SSFile[:-4] + "_ind.cnf"
-        self.LSSFile = "/var/obj/xbendik/LSS_{}.cnf".format(self.rid)
+        self.LSSFile = "/var/tmp/LSS_{}.cnf".format(self.rid)
         self.LSSIndFile = self.LSSFile[:-4] + "_ind.cnf"
         self.tmpFiles = [self.SSFile, self.SSIndFile, self.LSSFile, self.LSSIndFile]
 
@@ -152,11 +156,27 @@ class Counter:
                 if line[:2] == "v ":
                     autarky = [int(c) - 1 for c in line.split()[1:]]
         else: return
+
+        imu = self.getImu() if self.imu else []
+        self.imuSize = len(imu)
+
         coAutarky = [i for i in range(len(self.C)) if i not in autarky]
-        C = [self.C[c] for c in autarky]
-        B = [self.C[c] for c in coAutarky]
+        C = [self.C[c] for c in sorted(set(autarky) - set(imu))]
+        B = [self.C[c] for c in coAutarky + imu]
         print("autarky size: {} of {} clauses".format(len(autarky), len(self.C)))
+        print("imu size:", len(imu))
         self.C, self.B = C, B
+
+    def getImu(self):
+        cmd = "timeout 3600 python3 gimu.py {}".format(self.filename)
+        print(cmd)
+        out = run(cmd, 3600)
+        if "imu size" in out:
+            for line in out.splitlines():
+                line = line.rstrip()
+                if line[:2] == "v ":
+                    return [int(c) - 1 for c in line.split()[1:]]
+        else: return []
 
     def SS(self):
         clauses = self.W1()
@@ -340,11 +360,12 @@ if __name__ == "__main__":
     parser.add_argument("--w3", action='store_true', help = "Use the wrapper W3 (multiple wrappers can be used simultaneously)")
     parser.add_argument("--w4", action='store_true', help = "Use the wrapper W4 (multiple wrappers can be used simultaneously)")
     parser.add_argument("--w5", action='store_true', help = "Use the wrapper W5 (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--imu", action='store_true', help = "Use IMU.")
     args = parser.parse_args()
 
     print(args.w2, args.w4, args.w5)
 
-    counter = Counter(args.input_file, args.w2)
+    counter = Counter(args.input_file, args.w2, args.imu)
     signal.signal(signal.SIGHUP, partial(receiveSignal, counter.tmpFiles))
     signal.signal(signal.SIGINT, partial(receiveSignal, counter.tmpFiles))
     signal.signal(signal.SIGTERM, partial(receiveSignal, counter.tmpFiles))

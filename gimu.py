@@ -188,8 +188,12 @@ def getIMU(A,B,M = []):
             C = list(set(C).intersection(set(core)))
         whole[f] = True
     print("imu size: {}".format(len(K)))
+    print("imu size: {}".format(len(C)))
     print("hard:", len(B))
     print("soft:", len(A))
+
+    imu = ["v"] + [str(f + 1) for f in sorted(K)]
+    print(" ".join(imu))
 
 import sys
 if __name__ == "__main__":
