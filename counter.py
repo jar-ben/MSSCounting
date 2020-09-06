@@ -198,13 +198,14 @@ class Counter:
         clauses = []
         #the superset E is satisfiable
         i = 1
+        maxCB = maxVar(self.C + self.B)
         for cl in self.C:
-            renumCl = offsetClause(cl, 2*self.dimension + maxVar(self.C + self.B))
+            renumCl = offsetClause(cl, 2*self.dimension + maxCB)
             renumCl.append(i + self.dimension)
             clauses.append(renumCl)
             i += 1
         for cl in self.B:
-            clauses.append(offsetClause(cl, 2*self.dimension + maxVar(self.C + self.B)))
+            clauses.append(offsetClause(cl, 2*self.dimension + maxCB))
         
 
         #E supseteq S
@@ -282,12 +283,18 @@ class Counter:
     def runExact(self):
         self.ganak = True
         SSClauses, SSInd = self.SS()
+        if len(SSClauses) > 1200000:
+            print("Too large wrapper,", str(len(SSClauses)), "terminating")
+            sys.exit()
         SSFile = self.SSFile
         SSIndFile = self.SSIndFile
         exportCNF(SSClauses, SSFile, SSInd, SSIndFile)
         print(SSFile)
         
         LSSClauses, LSSInd = self.LSS()
+        if len(LSSClauses) > 1200000:
+            print("Too large wrapper,", str(len(LSSClauses)), "terminating")
+            sys.exit()
         LSSFile = self.LSSFile
         LSSIndFile = self.LSSIndFile
         exportCNF(LSSClauses, LSSFile, LSSInd, LSSIndFile)
