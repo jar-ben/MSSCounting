@@ -8,4 +8,13 @@ This tool also counts the number of Minimal Correction Subsets (MCSes) of F, whe
 
 # Citation
 A paper that introduces our counting approach was accepted to AAAI 2021 (to appear). If you use the tool, please, cite our paper:
-"Counting Maximal Satisfiable Subsets" by Jaroslav Bendik, and Kuldeep S. Meel. 
+
+```
+@inproceedings{BendikMeel2021,
+  author    = {Jaroslav Bend{\'{\i}}k and
+               Kuldeep S. Meel},
+  title     = {Counting Maximal Satisfiable Subsets},
+  booktitle = {AAAI},
+  year      = {2021 (to appear)}
+}
+```
