@@ -134,14 +134,14 @@ class Counter:
                 self.hitmapB[l].append(i) #note that here we store 0-based index as opposed to hitmapC
 
         #selection variables for individual wrappers. True means selected
-        self.w2 = False
-        self.w3 = False
-        self.w4 = False
-        self.w5 = False
+        self.w2 = True
+        self.w3 = True
+        self.w4 = True
+        self.w5 = True
 
-        self.SSFile = "/var/tmp/SS_{}.cnf".format(self.rid)
+        self.SSFile = "./tmp/SS_{}.cnf".format(self.rid)
         self.SSIndFile = self.SSFile[:-4] + "_ind.cnf"
-        self.LSSFile = "/var/tmp/LSS_{}.cnf".format(self.rid)
+        self.LSSFile = "./tmp/LSS_{}.cnf".format(self.rid)
         self.LSSIndFile = self.LSSFile[:-4] + "_ind.cnf"
         self.tmpFiles = [self.SSFile, self.SSIndFile, self.LSSFile, self.LSSIndFile]
 
@@ -322,12 +322,12 @@ class Counter:
 
         timeout = 3600
         if self.ganak:
-            cmd = "timeout {} /home/xbendik/bin/ganak/build/ganak {}".format(timeout, SSFile)
+            cmd = "timeout {} ./tools/ganak {}".format(timeout, SSFile)
             print(cmd)
             SScount = self.parseGanak(run(cmd, timeout))
             print("SS count:", SScount)
 
-            cmd = "timeout {} /home/xbendik/bin/ganak/build/ganak {}".format(timeout, LSSFile)
+            cmd = "timeout {} ./tools/ganak {}".format(timeout, LSSFile)
             print(cmd)
             LSScount = self.parseGanak(run(cmd, timeout))
             print("LSS count:", LSScount)
@@ -356,14 +356,13 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="count", help = "Use the flag to increase the verbosity of the outputs. The flag can be used repeatedly.")
     parser.add_argument("--variant", help = "Type of endocing (allowed values = {base,B,FEB}", default = "base")
     parser.add_argument("input_file", help = "A path to the input file. Either a .cnf or a .gcnf instance. See ./examples/")
-    parser.add_argument("--w2", action='store_true', help = "Use the wrapper W2, i.e., autarky (multiple wrappers can be used simultaneously)")
-    parser.add_argument("--w3", action='store_true', help = "Use the wrapper W3 (multiple wrappers can be used simultaneously)")
-    parser.add_argument("--w4", action='store_true', help = "Use the wrapper W4 (multiple wrappers can be used simultaneously)")
-    parser.add_argument("--w5", action='store_true', help = "Use the wrapper W5 (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w2", action='store_false', help = "Do not Use the wrapper W2, i.e., autarky (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w3", action='store_false', help = "Do not Use the wrapper W3 (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w4", action='store_false', help = "Do not Use the wrapper W4 (multiple wrappers can be used simultaneously)")
+    parser.add_argument("--w5", action='store_false', help = "Do not Use the wrapper W5 (multiple wrappers can be used simultaneously)")
     parser.add_argument("--imu", action='store_true', help = "Use IMU.")
     args = parser.parse_args()
 
-    print(args.w2, args.w4, args.w5)
 
     counter = Counter(args.input_file, args.w2, args.imu)
     signal.signal(signal.SIGHUP, partial(receiveSignal, counter.tmpFiles))
